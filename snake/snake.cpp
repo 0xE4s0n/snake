@@ -1,10 +1,11 @@
 ﻿#include <graphics.h>      // 引用图形库头文件
 #include <stdio.h>
+#include <tchar.h>
 
 #define winw 1000
 #define winh 500
 #define background RGB(0xE0, 0xEE, 0xE0)
-#define finfo "./userinfo.txt"
+#define finfo "userinfo.txt"
 
 typedef struct USER {
 	TCHAR username[11];
@@ -50,7 +51,7 @@ RECT windows;
 int main(void)
 {
 	initgraph(winw, winh);	// 创建绘图窗口
-	setbkcolor(RGB(0xE0, 0xEE, 0xE0)); //设置背景
+	//setbkcolor(RGB(0xE0, 0xEE, 0xE0)); //设置背景
 	cleardevice();	//刷新绘图窗口
 	RECT windows = { 0, 0, 1000, 500 }; //保存窗口信息
 	setfont();	//设置字体
@@ -202,7 +203,8 @@ void about(void)
 void score(void)
 {
 	user *head, *pp;
-	TCHAR tmp[10];
+	TCHAR *tmp = NULL;
+	int totlesize, usedsize;
 	string title[5];//抬头
 	string data[10][5];//十个用户的信息
 	int i, j;
@@ -222,20 +224,73 @@ void score(void)
 
 	while (pp != NULL)
 	{
-		for (i = 0; i < 10; i++)
-		{
-			data[i][0] = inittext(pp->username, 0, 0);
-			_itot_s(pp->playcount, tmp, 10, 10);
-			data[i][1] = inittext(tmp, 0, 0);
-			data[i][2] = inittext(pp->username, 0, 0);
-			data[i][3] = inittext(pp->username, 0, 0);
-			data[i][4] = inittext(pp->username, 0, 0);
-			for (j = 0; j < 5; j++)
+		for (i = 0; i < 1; i++)
+		{	//账号
+			data[i][0] = inittext(pp->username, -winw / 2, 0);
+			//游玩次数
+			usedsize = totlesize = sizeof(pp->playcount);
+			tmp = (TCHAR *)malloc(totlesize);
+			_itot_s(pp->playcount, tmp, sizeof(pp->playcount), 10);
+			data[i][1] = inittext(tmp, -winw / 2, 100);
+			memset(tmp, 0, totlesize);
+			usedsize = 0;
+			//游玩时间
+			if ( usedsize + sizeof(pp->timeh) > totlesize)//时
 			{
-				outtextxy(data[i][j].x, data[i][j].y, data[i][j].tstr);
+				totlesize = usedsize + sizeof(pp->timeh);
+				realloc(tmp, totlesize);
 			}
+			_itot_s(pp->timeh, tmp + usedsize, sizeof(pp->timeh), 10);
+			usedsize += sizeof(pp->timeh);
+			if (usedsize + sizeof(_T("时")) > totlesize)
+			{
+				totlesize = usedsize + sizeof(_T("时"));
+				realloc(tmp, totlesize);
+			}
+			_tcscat_s(tmp + usedsize, sizeof(_T("时")), _T("时"));
+			usedsize += sizeof(_T("时"));
+			if (usedsize + sizeof(pp->timem) > totlesize)//分
+			{
+				totlesize = usedsize + sizeof(pp->timem);
+				realloc(tmp, totlesize);
+			}
+			_itot_s(pp->timem, tmp + usedsize, sizeof(pp->timem), 10);
+			usedsize += sizeof(pp->timem);
+			if (usedsize + sizeof(_T("分")) > totlesize)
+			{
+				totlesize = usedsize + sizeof(_T("分"));
+				realloc(tmp, totlesize);
+			}
+			_tcscat_s(tmp + usedsize, sizeof(_T("分")), _T("分"));
+			usedsize += sizeof(_T("分"));
+			if (usedsize + sizeof(pp->times) > totlesize)//秒
+			{
+				totlesize = usedsize + sizeof(pp->times);
+				realloc(tmp, totlesize);
+			}
+			_itot_s(pp->times, tmp + usedsize, sizeof(pp->times), 10);
+			usedsize += sizeof(pp->times);
+			if (usedsize + sizeof(_T("秒")) > totlesize)
+			{
+				totlesize = usedsize + sizeof(_T("秒"));
+				realloc(tmp, totlesize);
+			}
+			_tcscat_s(tmp + usedsize, sizeof(_T("秒")), _T("秒"));
+			usedsize += sizeof(_T("秒"));
+			data[i][2] = inittext(tmp, -winw / 2, 200);
+			//最高成绩
+			_itot_s(pp->maxscore,tmp,sizeof(pp->maxscore),10);
+			data[i][3] = inittext(tmp, 0, 0);
+			//排名
+			_itot_s(pp->order, tmp, sizeof(pp->maxscore), 10);
+			data[i][4] = inittext(tmp, 0, 0);
+			for (j = 0; j < 3; j++)
+			{
+				outtextxy(data[i][j].x + data[i][j].w / 2, data[i][j].y, data[i][j].tstr);
+			}
+			pp = pp->next;
 		}
-		//, pp->playcount, pp->timeh, pp->timem, pp->times, pp->maxscore, pp->order}
+		//pp->, pp->order
 	}
 	getchar();
 }
@@ -248,9 +303,9 @@ user *readinfo(void)
 	fopen_s(&fp, finfo, "r");
 
 	pp = (user *)malloc(sizeof(user));
-	while (_ftscanf_s(fp, _T("%s %d %d %d %d %d %d"), pp->username, 10, &pp->playcount, &pp->timeh, &pp->timem, &pp->times, &pp->maxscore, &pp->order) == 7)
+	while (fscanf_s(fp, "%ws %d %d %d %d %d %d", pp->username, _countof(pp->username), &pp->playcount, &pp->timeh, &pp->timem, &pp->times, &pp->maxscore, &pp->order) == 7)
 	{
-		if (head = NULL)
+		if (head == NULL)
 		{
 			head = pp;
 			pf = head;
@@ -262,5 +317,10 @@ user *readinfo(void)
 		}
 		pp = (user *)malloc(sizeof(user));
 	}
+	if (pf != NULL)
+	{
+		pf->next = NULL;
+	}
+	free(pp);
 	return head;
 }
