@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <conio.h>
 #include <math.h>
+#include <string.h>
 #include <pthread.h>
 
 #pragma comment(lib, "pthreadVC2.lib")//预编译引入库文件
@@ -17,11 +18,12 @@
 #define scoretextcolor RGB(255, 99, 71) //排行榜字体颜色
 #define edittextcolor RGB(0xbf, 0xbf, 0xbf)//输入框颜色
 #define finfo "userinfo.txt" //用户信息保存文件
+#define key "0xE4s0n"//加解密密匙
 
 //保存用户信息
 typedef struct USER {
 	char username[11];
-	char password[11];
+	char password[17];
 	unsigned int playcount;
 	unsigned int maxscore;
 	unsigned int timeh, timem;
@@ -54,6 +56,7 @@ typedef struct STRING {
 	int pianx, piany;
 }string;
 
+//输入框
 typedef struct EDITTEXT {
 	int x, y, w, h;//左上角的坐标
 }input;
@@ -69,6 +72,9 @@ char *myintcat(char *tmp, unsigned int *usedsize, unsigned int *totlesize, unsig
 char *mystrcat(char *tmp, unsigned int *usedsize, unsigned int *totlesize, const char *cstr);
 void login(void);
 void *inputthread(void *args);
+int checkpassword(char **input);
+char *encode(const char *buf, const long size);
+int regest(char **input);
 void play(void);
 void move(void);
 
@@ -76,6 +82,8 @@ RECT windows;
 bool islogin = false;
 bool exitinputthread = false;
 user usr;
+//base64表
+static const char *ALPHA_BASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 int main(void)
 {
@@ -99,14 +107,14 @@ int main(void)
 */
 bool menu(void)
 {
-	string str[5],title[2],slogin;
+	string str[5], title[2], slogin;
 	int ichoise = -1, i;
 
 
 	setbkcolor(background);//设置背景
 	cleardevice();//刷新背景
 	setfont();	//设置字体
-	
+
 	//标题1
 	settextstyle(80, 0, "微软雅黑");
 	settextcolor(titlecolor1);
@@ -130,16 +138,16 @@ bool menu(void)
 	}
 	if (!islogin)//未登录则显示游客 并提示登录
 	{
-		slogin = inittext("游客", winw / 2 - 100, winh / 2 - 100);
-		str[4] = inittext("请登录", winw / 2 - 100, winh / 2 - 50);
+		slogin = inittext("游客", winw / 2 - 150, winh / 2 - 100);
+		str[4] = inittext("请登录", winw / 2 - 150, winh / 2 - 50);
 		outtextxy(slogin.x, slogin.y, slogin.tstr);
 		outtextxy(str[4].x, str[4].y, str[4].tstr);
 		ichoise = mousehandle(str, 5); //菜单选择事件
 	}
 	else//登录则显示用户名并欢迎
 	{
-		slogin = inittext(usr.username, winw / 2 - 100, winh / 2 - 100);
-		str[4] = inittext("欢迎你", winw / 2 - 100, winh / 2 - 50);
+		slogin = inittext(usr.username, winw / 2 - 150, winh / 2 - 100);
+		str[4] = inittext("欢迎你", winw / 2 - 150, winh / 2 - 50);
 		outtextxy(slogin.x, slogin.y, slogin.tstr);
 		outtextxy(str[4].x, str[4].y, str[4].tstr);
 		ichoise = mousehandle(str, 4); //菜单选择事件
@@ -159,7 +167,7 @@ bool menu(void)
 		return true;//退出游戏
 		break;
 	case 4:
-		login();
+		login();//登录注册
 		break;
 	default:
 		break;
@@ -207,6 +215,9 @@ int mousehandle(string *str, int num)
 			{
 				settextstyle(60, 0, "微软雅黑");
 				setbkcolor(background);
+				clearrectangle(str[i].x, str[i].y, str[i].x + str[i].w, str[i].y + str[i].h);
+				settextstyle(60, 0, "微软雅黑");
+				setbkcolor(background);
 				str[i] = inittext(str[i].tstr, str[i].pianx, str[i].piany);
 				outtextxy(str[i].x, str[i].y, str[i].tstr);
 				while ((mouse.x >= str[i].x && mouse.x <= str[i].x + str[i].w && mouse.y >= str[i].y && mouse.y <= str[i].y + str[i].h))
@@ -218,11 +229,18 @@ int mousehandle(string *str, int num)
 					mouse = GetMouseMsg();
 					if (mouse.mkLButton)//点击鼠标左键返回id
 					{
+						settextstyle(60, 0, "微软雅黑");
+						setbkcolor(background);
+						clearrectangle(str[i].x, str[i].y, str[i].x + str[i].w, str[i].y + str[i].h);
+						settextstyle(50, 0, "微软雅黑");
+						setbkcolor(background);
+						str[i] = inittext(str[i].tstr, str[i].pianx, str[i].piany);
+						outtextxy(str[i].x, str[i].y, str[i].tstr);
 						return i;
 					}
 				}
 				//鼠标移出文字区域，刷新背景
-				settextstyle(50, 0, "微软雅黑");
+				settextstyle(60, 0, "微软雅黑");
 				setbkcolor(background);
 				clearrectangle(str[i].x, str[i].y, str[i].x + str[i].w, str[i].y + str[i].h);
 			}
@@ -276,7 +294,9 @@ void about(void)
 		loadimage(&wenxinpay, "C:\\Users\\0xEASONs\\Pictures\\Saved Pictures\\weixinpay.png", 240, 360);
 		putimage(40, 100, &alipay);
 		putimage(winw - 40 - 240, 100, &wenxinpay);
-		
+
+		settextstyle(50, 0, "微软雅黑");
+		setfillcolor(background);
 		about[0] = inittext("支持作者", 0, -120);
 		outtextxy(about[0].x, about[0].y, about[0].tstr);
 		about[1] = inittext("一个吃土的程序猿", 0, -40);
@@ -298,7 +318,7 @@ void about(void)
 */
 void score(void)
 {
-	user *head = NULL, *pp = NULL;
+	user *head = NULL, *pp = NULL, *pn = NULL;
 	char *tmp = NULL;
 	unsigned int totlesize = 0, usedsize = 0;
 	string title[5];//抬头
@@ -324,7 +344,7 @@ void score(void)
 	settextstyle(40, 0, "微软雅黑");
 	settextcolor(scoretextcolor);
 	while (pp != NULL)
-	{	
+	{
 		if (pp->order <= 10)//前十输出
 		{
 			//账号
@@ -372,6 +392,13 @@ void score(void)
 	back = inittext("返回", -winw / 2 + 920, -winh / 2 + 80 + 9 * 40);
 	outtextxy(back.x, back.y, back.tstr);
 	mousehandle(&back, 1);
+	pp = head;
+	while (pp != NULL)
+	{
+		pn = pp->next;
+		free(pp);
+		pp = pn;
+	}
 }
 
 /*
@@ -384,7 +411,7 @@ user *readinfo(void)
 	FILE *fp;
 	user *head = NULL, *pp, *pf = NULL;
 
-	fopen_s(&fp, finfo, "r");
+	fopen_s(&fp, finfo, "rb");
 
 	if (fp == NULL)
 	{
@@ -392,7 +419,7 @@ user *readinfo(void)
 		exit(-1);
 	}
 	pp = (user *)malloc(sizeof(user));
-	while (fscanf_s(fp, "%s %u %u %u %u %u", pp->username, _countof(pp->username), &pp->playcount, &pp->timeh, &pp->timem, &pp->maxscore, &pp->order) == 6)
+	while (fscanf_s(fp, "%s %s %u %u %u %u %u", pp->username, _countof(pp->username), pp->password, _countof(pp->password), &pp->playcount, &pp->timeh, &pp->timem, &pp->maxscore, &pp->order) == 7)
 	{
 		if (head == NULL)
 		{
@@ -411,6 +438,7 @@ user *readinfo(void)
 		pf->next = NULL;
 	}
 	free(pp);
+	fclose(fp);
 	return head;
 }
 
@@ -458,7 +486,7 @@ char *myintcat(char *tmp, unsigned int *usedsize, unsigned int *totlesize, unsig
 */
 void login(void)
 {
-	string guidstr[3];
+	string guidstr[3], warning;
 	char **cinput;//保存帐号密码
 	pthread_t input_thread;
 	int loginichoise = -1;
@@ -467,31 +495,84 @@ void login(void)
 	pthread_create(&input_thread, NULL, inputthread, &cinput);
 	Sleep(1);
 	settextstyle(50, 0, "微软雅黑");
-	guidstr[0] = inittext("登录", -50, 50);
-	guidstr[1] = inittext("注册", 250, 50);
-	guidstr[2] = inittext("返回", 100, -winh / 2 + 400);
+	guidstr[0] = inittext("登录", -100, 50);
+	guidstr[1] = inittext("注册", 200, 50);
+	guidstr[2] = inittext("返回", 50, -winh / 2 + 400);
 	setbkcolor(background);
 	outtextxy(guidstr[0].x, guidstr[0].y, guidstr[0].tstr);
 	outtextxy(guidstr[1].x, guidstr[1].y, guidstr[1].tstr);
 	outtextxy(guidstr[2].x, guidstr[2].y, guidstr[2].tstr);
-
-	loginichoise = mousehandle(guidstr, 3);
-	exitinputthread = true;
-	Sleep(1);
-	exitinputthread = false;
-	switch (loginichoise)
+	while (true)
 	{
-	case 0:
-		strcpy_s(usr.username, "0xE4s0n");
-		islogin = true;
-		break;
-	case 1:
-		break;
-	case 2:
-		break;
-	default:
-		break;
+		loginichoise = mousehandle(guidstr, 3);
+		switch (loginichoise)
+		{
+		case 0://登录
+			switch (checkpassword(cinput))
+			{
+			case 0://登录成功
+				exitinputthread = true;
+				Sleep(1);
+				exitinputthread = false;
+				goto lable_exit;
+				break;
+			case 1://密码错误
+				settextstyle(50, 0, "微软雅黑");
+				setfillcolor(background);
+				warning = inittext("密码错误", 300, -winh / 2 + 400);
+				solidrectangle(686, 375, 705 + 228, 375 + 50);
+				outtextxy(warning.x, warning.y, warning.tstr);
+				break;
+			case 2://用户不存在
+				settextstyle(50, 0, "微软雅黑");
+				setfillcolor(background);
+				warning = inittext("用户不存在", 300, -winh / 2 + 400);
+				solidrectangle(686, 375, 705 + 228, 375 + 50);
+				outtextxy(warning.x, warning.y, warning.tstr);
+				break;
+			default:
+				break;
+			}
+			break;
+		case 1://注册
+			switch (regest(cinput))
+			{
+			case 0:
+				settextstyle(50, 0, "微软雅黑");
+				setfillcolor(background);
+				warning = inittext("密码长度不足", 300, -winh / 2 + 400);
+				solidrectangle(686, 375, 705 + 228, 375 + 50);
+				outtextxy(warning.x, warning.y, warning.tstr);
+				break;
+			case 1:
+				settextstyle(50, 0, "微软雅黑");
+				setfillcolor(background);
+				warning = inittext("用户已存在", 300, -winh / 2 + 400);
+				solidrectangle(686, 375, 705 + 228, 375 + 50);
+				outtextxy(warning.x, warning.y, warning.tstr);
+				break;
+			case 2:
+				exitinputthread = true;
+				Sleep(1);
+				exitinputthread = false;
+				goto lable_exit;
+				break;
+			default:
+				break;
+			}
+			break;
+		case 2://返回
+			exitinputthread = true;
+			Sleep(1);
+			exitinputthread = false;
+			goto lable_exit;
+			break;
+		default:
+			break;
+		}
 	}
+lable_exit:
+	;
 }
 
 /*
@@ -502,16 +583,16 @@ void login(void)
 void *inputthread(void *args)
 {
 	char **cinput, *password_hide;//输入的帐号，密码的明文，隐藏的密码;
-	string tstr,data[2];
-	int postion = 0 ,id = 0;
+	string tstr, data[2];
+	int postion = 0, id = 0;
 	bool linevisalable = false;//光标可见
 	input iInput[2];
 
 	cinput = *(char ***)args;
 	cleardevice();
 	settextstyle(50, 0, "微软雅黑");
-	data[0] = inittext("帐号", -200, -50 - 100);
-	data[1] = inittext("密码", -200, 50 - 100);
+	data[0] = inittext("帐号", -250, -50 - 100);
+	data[1] = inittext("密码", -250, 50 - 100);
 	outtextxy(data[0].x, data[0].y, data[0].tstr);
 	outtextxy(data[1].x, data[1].y, data[1].tstr);
 	iInput[0].x = iInput[1].x = data[0].x + 100;
@@ -532,19 +613,12 @@ void *inputthread(void *args)
 	memset(cinput[1], 0, 11 * sizeof(char));
 	memset(password_hide, 0, 11 * sizeof(char));
 
-	while(true)
+	while (true)
 	{
 		if (exitinputthread)
 		{
 			break;
 		}
-		//绘制输入框边线
-		setfillstyle(BS_NULL);
-		setlinecolor(BLACK);
-		fillrectangle(iInput[id].x - 2, iInput[id].y - 2, iInput[id].x + iInput[id].w + 2, iInput[id].y + iInput[id].h + 2);
-		setlinecolor(edittextcolor);
-		fillrectangle(iInput[1 - id].x - 2, iInput[1 - id].y - 2, iInput[1 - id].x + iInput[1 - id].w + 2, iInput[1 - id].y + iInput[1 - id].h + 2);
-		setfillstyle(BS_SOLID);
 		//0.5秒的偶数倍且光标不可见
 		if ((clock() / (CLOCKS_PER_SEC / 2) % 2) == 0 && !linevisalable)
 		{
@@ -562,7 +636,7 @@ void *inputthread(void *args)
 			linevisalable = true;
 		}
 		//0.5秒的奇数倍且光标可见
-		else if((clock() / (CLOCKS_PER_SEC / 2) % 2) == 1 && linevisalable)
+		else if ((clock() / (CLOCKS_PER_SEC / 2) % 2) == 1 && linevisalable)
 		{
 			setlinecolor(edittextcolor);
 			if (id == 0)
@@ -584,49 +658,50 @@ void *inputthread(void *args)
 			//等于退格
 			if (*(cinput[id] + postion) == 8)
 			{
-				if (postion >= 0)
+				if (postion >= 0)//输入的字数大于1
 				{
 					memset(cinput[id] + postion - 1, 0, 2 * sizeof(char));
 					if (postion > 0)
 					{
 						postion--;
 					}
-					else if (id == 1 && postion == 0)
+					else if (id == 1 && postion == 0)//密码第一位
 					{
 						id--;
 						memset(cinput[1], 0, sizeof(char));
 						memset(cinput[0] + 9, 0, sizeof(char));
 						postion = 9;
-						setlinecolor(edittextcolor);
+						setlinecolor(edittextcolor);//消除密码框的光标
 						line(iInput[1].x + textwidth(cinput[1]) + 2, iInput[1].y, iInput[1].x + textwidth(cinput[1]) + 2, iInput[1].y + iInput[1].h);
 						linevisalable = false;
 					}
 				}
 			}
 			//帐号密码输入完毕不执行以下语句
-			if (id == 1 && postion == 10)
+			if (!(id == 1 && postion == 9))
 			{
-				continue;
+				//非字母数字
+				if (!((*(cinput[id] + postion) >= '0' && *(cinput[id] + postion) <= '9') || (*(cinput[id] + postion) >= 'a' && *(cinput[id] + postion) <= 'z') || (*(cinput[id] + postion) >= 'A' && *(cinput[id] + postion) <= 'Z')))
+				{
+					memset(cinput[id] + postion, 0, sizeof(char));
+				}
+				//字母数字
+				else
+				{
+					postion++;
+				}
+				setbkcolor(edittextcolor);
+				solidrectangle(iInput[id].x - 2, iInput[id].y - 2, iInput[id].x + iInput[id].w + 2, iInput[id].y + iInput[id].h + 2);
+				tstr.x = iInput[id].x;
+				tstr.y = iInput[id].y;
+				tstr.w = textwidth(cinput[id]);
+				tstr.h = textheight(cinput[id]);
 			}
-			//非字母数字
-			else if (!((*(cinput[id] + postion) >= '0' && *(cinput[id] + postion) <= '9') || (*(cinput[id] + postion) >= 'a' && *(cinput[id] + postion) <= 'z') || (*(cinput[id] + postion) >= 'A' && *(cinput[id] + postion) <= 'Z')))
-			{
-				memset(cinput[id] + postion, 0, sizeof(char));
-			}
-			//字母数字
-			else
-			{
-				postion++;
-			}
-			setbkcolor(edittextcolor);
-			solidrectangle(iInput[id].x - 2, iInput[id].y - 2, iInput[id].x + iInput[id].w + 2, iInput[id].y + iInput[id].h + 2);
-			tstr.x = iInput[id].x;
-			tstr.y = iInput[id].y;
-			tstr.w = textwidth(cinput[id]);
-			tstr.h = textheight(cinput[id]);
 			//回显到屏幕
 			if (id == 0)
 			{
+				setfillcolor(edittextcolor);
+				solidrectangle(iInput[0].x - 2, iInput[0].y - 2, iInput[0].x + iInput[0].w + 2, iInput[0].y + iInput[0].h + 2);
 				tstr.tstr = cinput[0];
 				settextstyle(50, 0, "微软雅黑");
 				setbkcolor(edittextcolor);
@@ -634,6 +709,8 @@ void *inputthread(void *args)
 			}
 			else
 			{
+				setfillcolor(edittextcolor);
+				solidrectangle(iInput[1].x - 2, iInput[1].y - 2, iInput[1].x + iInput[1].w + 2, iInput[1].y + iInput[1].h + 2);
 				memset(password_hide, '*', strlen(cinput[1]) * sizeof(char));
 				memset(password_hide + strlen(cinput[1]), 0, sizeof(char) * (10 - strlen(cinput[1])));
 				settextstyle(50, 0, "微软雅黑");
@@ -646,11 +723,144 @@ void *inputthread(void *args)
 				id++;
 				postion = 0;
 			}
+
 		}
 	}
 	return NULL;
 }
 
-void play(void){}
+/*
+函数功能：检查帐号密码
+函数参数：帐号密码
+函数返回值：无
+*/
+int checkpassword(char **input)
+{
+	user *head = NULL, *pp = NULL, *pn = NULL;
 
-void move(void){}
+	pp = head = readinfo();
+
+	while (pp != NULL)
+	{
+		if (strcmp(pp->username, input[0]) == 0)
+		{
+			if (strcmp(encode(input[1], strlen(input[1])), pp->password) == 0)//密码正确
+			{
+				islogin = true;
+				strcpy_s(usr.username, sizeof(usr.username), pp->username);
+				strcpy_s(usr.password, sizeof(usr.password), pp->password);
+				usr.playcount = pp->playcount;
+				usr.order = pp->order;
+				usr.timeh = pp->timeh;
+				usr.timem = pp->timem;
+				usr.maxscore = pp->maxscore;
+				pp = head;
+				while (pp != NULL)
+				{
+					pn = pp->next;
+					free(pp);
+					pp = pn;
+				}
+				return 0;
+			}
+			else//密码错误
+			{
+				return 1;
+			}
+		}
+		pp = pp->next;
+	}
+	//没有该账号
+	return 2;
+}
+
+/*
+函数功能：base64加密
+函数参数：待加密字符串
+函数返回值：无
+*/
+char *encode(const char *buf, const long size) {
+	int a = 0;
+	int i = 0;
+	char *base64Char;
+
+	base64Char = (char *)malloc(17 * sizeof(char));
+	while (i < size) {
+		char b0 = buf[i++];
+		char b1 = (i < size) ? buf[i++] : 0;
+		char b2 = (i < size) ? buf[i++] : 0;
+
+		int int63 = 0x3F; //  00111111
+		int int255 = 0xFF; // 11111111
+		base64Char[a++] = ALPHA_BASE[(b0 >> 2) & int63];
+		base64Char[a++] = ALPHA_BASE[((b0 << 4) | ((b1 & int255) >> 4)) & int63];
+		base64Char[a++] = ALPHA_BASE[((b1 << 2) | ((b2 & int255) >> 6)) & int63];
+		base64Char[a++] = ALPHA_BASE[b2 & int63];
+	}
+	switch (size % 3) {
+	case 1:
+		base64Char[--a] = '=';
+	case 2:
+		base64Char[--a] = '=';
+	}
+	base64Char[16] = 0;
+	return base64Char;
+}
+
+/*
+函数功能：注册
+函数参数：帐号密码
+函数返回值：无
+*/
+int regest(char **input)
+{
+	user *head = NULL, *pp = NULL, *pn = NULL;
+	FILE *fp;
+
+	if (strlen(input[1]) != 10)
+	{
+		return 0;//密码长度不足
+	}
+	pp = head = readinfo();
+	while (pp != NULL)
+	{
+		if (strcmp(pp->username, input[0]) == 0)
+		{
+			pp = head;
+			while (pp != NULL)
+			{
+				pn = pp->next;
+				free(pp);
+				pp = pn;
+			}
+			return 1;//用户已存在
+		}
+		pp = pp->next;
+	}
+	pp = head;
+	while (pp != NULL)
+	{
+		pn = pp->next;
+		free(pp);
+		pp = pn;
+	}
+	fopen_s(&fp, finfo, "a");
+	if (fp == NULL)
+	{
+		MessageBox(GetHWnd(), "没有找到用户信息文件", "错误", MB_ICONERROR);
+		exit(-1);
+	}
+	fprintf_s(fp, "%s %s %u %u %u %u %u\n", input[0], encode(input[1], strlen(input[1])), 0, 0, 0, 0, 99);
+	fclose(fp);
+	islogin = true;
+	strcpy_s(usr.username, sizeof(usr.username), input[0]);
+	strcpy_s(usr.password, sizeof(usr.password), input[1]);
+	usr.maxscore = usr.timem = usr.timeh = usr.playcount = 0;
+	usr.order = 99;
+
+	return 2;//注册成功
+}
+
+void play(void) {}
+
+void move(void) {}
