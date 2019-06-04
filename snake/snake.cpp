@@ -18,7 +18,8 @@
 #define scoretextcolor RGB(255, 99, 71) //排行榜字体颜色
 #define edittextcolor RGB(0xbf, 0xbf, 0xbf)//输入框颜色
 #define finfo "userinfo.txt" //用户信息保存文件
-#define key "0xE4s0n"//加解密密匙
+#define pointw 16
+
 
 //保存用户信息
 typedef struct USER {
@@ -31,21 +32,18 @@ typedef struct USER {
 	struct USER *next;
 }user;
 
-//蛇的每节身体
+//蛇的身体
 typedef struct SNAKE {
-	int x;
-	int y;
-	int w;
-	int h;
-	struct SNAKE *next;
+	POINT **point;
+	int r = pointw;
+	int num;
 }snake;
 
 //食物
 typedef struct FOOD {
 	int x;
 	int y;
-	int w;
-	int h;
+	int r = pointw;
 }food;
 
 //字符串图形
@@ -61,6 +59,12 @@ typedef struct EDITTEXT {
 	int x, y, w, h;//左上角的坐标
 }input;
 
+//墙
+typedef struct WALL {
+	POINT *point;
+	int num;
+}wall;
+
 bool menu(void);
 void setfont(void);
 int mousehandle(string *str, int num);
@@ -75,20 +79,37 @@ void *inputthread(void *args);
 int checkpassword(char **input);
 char *encode(const char *buf, const long size);
 int regest(char **input);
+input *initplay(void);
 void play(void);
-void move(void);
+bool death(snake *snakehead, input playground, wall *Wall);
+wall *initwall(int idifficult);
+POINT *getwallpostion(int num);
+void drawwall(wall *Wall);
+void drawsnake(snake *snak);
+void movesnake(snake *snak, int *derection, int *headto, bool eat);
+void *movecontrlthread(void *args);
 
 RECT windows;
 bool islogin = false;
 bool exitinputthread = false;
+bool exitcontrl = false;
 user usr;
 //base64表
-static const char *ALPHA_BASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char *ALPHA_BASE = "ABFOghijkl01GHImnopDEXYZJfwKLMNqrs34567tuvPQRSTUVWC289+/abcdexyz";
 
 int main(void)
 {
 	initgraph(winw, winh);	// 创建绘图窗口
 	windows = { 0, 0, 1000, 500 }; //保存窗口信息
+	FILE *fp;
+
+	fopen_s(&fp, finfo, "r");
+
+	if (fp == NULL)
+	{
+		fopen_s(&fp, finfo, "w");
+	}
+	fclose(fp);
 	while (true)//菜单
 	{
 		if (menu())
@@ -411,7 +432,7 @@ user *readinfo(void)
 	FILE *fp;
 	user *head = NULL, *pp, *pf = NULL;
 
-	fopen_s(&fp, finfo, "rb");
+	fopen_s(&fp, finfo, "r");
 
 	if (fp == NULL)
 	{
@@ -799,9 +820,9 @@ char *encode(const char *buf, const long size) {
 	}
 	switch (size % 3) {
 	case 1:
-		base64Char[--a] = '=';
+		base64Char[--a] = '*';
 	case 2:
-		base64Char[--a] = '=';
+		base64Char[--a] = '#';
 	}
 	base64Char[16] = 0;
 	return base64Char;
@@ -815,7 +836,7 @@ char *encode(const char *buf, const long size) {
 int regest(char **input)
 {
 	user *head = NULL, *pp = NULL, *pn = NULL;
-	FILE *fp;
+	FILE *fp = NULL;
 
 	if (strlen(input[1]) != 10)
 	{
@@ -861,6 +882,625 @@ int regest(char **input)
 	return 2;//注册成功
 }
 
-void play(void) {}
+/*
+函数功能：完成游戏的处理
+函数参数：无
+函数返回值：无
+*/
+void play(void)
+{
+	input *playground;
+	string difficult[4];
+	wall *Wall;
+	snake snak;
+	int derection = 3, headto = 3;
+	int speed = 1;
+	int idifficult;
+	int i;
+	pthread_t contrl_thread;
+	void *args[2];
 
-void move(void) {}
+	if (!islogin)
+	{
+		if (IDNO == MessageBox(GetHWnd(), "以游客身份登录不会记载成绩是否继续?", "提示", MB_YESNO | MB_ICONQUESTION))
+		{
+			return;
+		}
+	}
+	cleardevice();
+	difficult[0] = inittext("简单", 0, -winh / 2 + 145);
+	difficult[1] = inittext("一般", 0, -winh / 2 + 215);
+	difficult[2] = inittext("困难", 0, -winh / 2 + 285);
+	difficult[3] = inittext("噩梦", 0, -winh / 2 + 355);
+	for (i = 0; i < 4; i++)
+	{
+		outtextxy(difficult[i].x, difficult[i].y, difficult[i].tstr);
+	}
+	idifficult = mousehandle(difficult, 4);
+
+	playground = initplay();
+	Wall = initwall(idifficult);
+	drawwall(Wall);
+	drawsnake(&snak);
+	args[0] = &derection;
+	args[1] = &headto;
+	pthread_create(&contrl_thread, NULL, movecontrlthread, args);
+	while (true)
+	{
+		if(_kbhit())
+		{
+			if (_getch() == ' ')
+			{
+				while (_getch() != ' ')
+				{
+					Sleep(1);
+				}
+			}
+			else
+			{
+				ungetc(' ', stdin);
+			}
+		}
+		movesnake(&snak, &derection, &headto, false);
+		if (death(&snak, *playground, Wall))
+		{
+			exitcontrl = true;
+			Sleep(1);
+			exitcontrl = false;
+			break;
+		}
+		Sleep(100 / speed);
+	}
+	_getch();
+}
+
+/*
+函数功能：初始化游戏界面
+函数参数：无
+函数返回值：游戏区域
+*/
+input *initplay(void)
+{
+	input *playground;
+	string scorebored[2], tips[3];
+
+	cleardevice();
+
+	playground = (input *)malloc(sizeof(input));
+	playground->x = pointw;
+	playground->y = pointw;
+	playground->h = (winh - 2 * pointw) - (winh - 2 * pointw) % pointw;
+	playground->w = (winw - pointw - 300) - (winw - pointw - 300) % pointw;
+
+	setfillcolor(edittextcolor);
+	solidrectangle(0, 0, playground->w + 2 * pointw, winh);
+
+
+	setfillcolor(background);
+	solidrectangle(playground->x, playground->y, playground->x + playground->w, playground->y + playground->h);
+
+	settextstyle(50, 0, "微软雅黑");
+	setbkcolor(background);
+	scorebored[0] = inittext("当前分数", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 20);
+	outtextxy(scorebored[0].x + scorebored[0].w / 2, scorebored[0].y + scorebored[0].h / 2, scorebored[0].tstr);
+	scorebored[1] = inittext("当前关卡", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 170);
+	outtextxy(scorebored[1].x + scorebored[1].w / 2, scorebored[1].y + scorebored[1].h / 2, scorebored[1].tstr);
+	settextstyle(30, 0, "微软雅黑");
+	setbkcolor(background);
+	tips[0] = inittext("方向键移动", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 400);
+	outtextxy(tips[0].x + tips[0].w / 2, tips[0].y + tips[0].h / 2, tips[0].tstr);
+	tips[1] = inittext("Ctrl加速", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 430);
+	outtextxy(tips[1].x + tips[1].w / 2, tips[1].y + tips[1].h / 2, tips[1].tstr);
+	tips[2] = inittext("空格暂停", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 460);
+	outtextxy(tips[2].x + tips[2].w / 2, tips[2].y + tips[2].h / 2, tips[2].tstr);
+
+	return playground;
+}
+
+/*
+函数功能：判断蛇是否死亡
+函数参数：指向蛇的结构体，游戏区域
+函数返回值：死亡与否
+*/
+bool death(snake *snakehead, input playground, wall *Wall)
+{
+	int i;
+
+	for (i = 1; i < (snakehead->num - 1); i++)
+	{
+		if ((snakehead->point[0]->x - snakehead->point[i]->x) * (snakehead->point[0]->x - snakehead->point[i + 1]->x) < 0)//在水平两点之间
+		{
+			if (snakehead->point[0]->y == snakehead->point[i]->y)
+			{
+				return true;
+			}
+		}
+		else if ((snakehead->point[0]->y - snakehead->point[i]->y) * (snakehead->point[0]->y - snakehead->point[i + 1]->y) < 0)//在竖直两点之间
+		{
+			if (snakehead->point[0]->x == snakehead->point[i]->x)
+			{
+				return true;
+			}
+		}
+
+	}
+	for (i = 0; i < Wall->num; i++)
+	{
+		if ((snakehead->point[0]->x == Wall->point[i].x) && (snakehead->point[0]->y == Wall->point[i].y))
+		{
+			return true;
+		}
+	}
+	if (snakehead->point[0]->x <= playground.x || snakehead->point[0]->y <= playground.y || snakehead->point[0]->x >= playground.x + playground.w || snakehead->point[0]->y >= playground.y + playground.h)
+	{//撞墙
+		return true;
+	}
+	return false;
+}
+
+/*
+函数功能：初始化生成的障碍物
+函数参数：难度
+函数返回值：wall指针
+*/
+wall *initwall(int idifficult)
+{
+	wall *Wall;
+
+	Wall = (wall *)malloc(sizeof(wall));
+	switch (idifficult)
+	{
+	case 0:
+		Wall->num = 0;
+		Wall->point = NULL;
+		return Wall;
+	case 1:
+		Wall->num = 20;
+		Wall->point = getwallpostion(20);
+		return Wall;
+	case 2:
+		Wall->num = 40;
+		Wall->point = getwallpostion(40);
+		return Wall;
+	case 3:
+		Wall->num = 60;
+		Wall->point = getwallpostion(60);
+		return Wall;
+	default:
+		Wall->num = 0;
+		Wall->point = NULL;
+		return Wall;
+	}
+}
+
+/*
+函数功能：随机生成墙的坐标
+函数参数：墙的数目
+函数返回值：指向墙的坐标的指针
+*/
+POINT *getwallpostion(int num)
+{
+	POINT *wall;
+	int i;
+	int seed;
+
+	srand((unsigned int)time(0));
+	wall = (POINT *)malloc(num * sizeof(POINT));
+	for (i = 0; i < num; i++)
+	{
+		seed = rand();
+		wall[i].x = ((seed % 600 + 100) / pointw) * pointw;
+		srand(seed);
+		seed = rand();
+		wall[i].y = ((seed % 450 + 50) / pointw) * pointw;
+	}
+	return wall;
+
+}
+
+/*
+函数功能：画出墙
+函数参数：指向墙的指针
+函数返回值：无
+*/
+void drawwall(wall *Wall)
+{
+	int i;
+
+	for (i = 0; i < Wall->num; i++)
+	{
+		setfillcolor(edittextcolor);
+		solidrectangle(Wall->point[i].x, Wall->point[i].y, Wall->point[i].x + pointw, Wall->point[i].y + pointw);
+	}
+}
+
+/*
+函数功能：画出蛇
+函数参数：指向蛇的指针
+函数返回值：无
+*/
+void drawsnake(snake *snak)
+{
+	int i;
+
+	snak->num = 2;
+	snak->point = (POINT **)malloc(2 * sizeof(POINT *));
+	snak->point[0] = (POINT *)malloc(sizeof(POINT));
+	snak->point[1] = (POINT *)malloc(sizeof(POINT));
+	snak->point[0]->y = snak->point[1]->y = 2 * pointw;
+	snak->point[0]->x = pointw * 20;
+	snak->point[1]->x = pointw * 1;
+	for (i = snak->point[1]->x + snak->r / 2; i <= snak->point[0]->x + snak->r / 2; i++)
+	{
+		setfillcolor(RGB(3, 253, 10));
+		solidcircle(i, snak->point[0]->y + snak->r / 2, snak->r / 2);
+	}
+}
+
+/*
+函数功能：移动蛇
+函数参数：指向蛇的指针
+函数返回值：无
+*/
+void movesnake(snake *snak, int *derection, int *headto, bool eat)
+{
+	int i, j;
+
+lable_move:
+	switch (*derection)//移动
+	{
+	case 0://上
+		if (*headto == 1)
+		{
+			*derection = 1;
+			goto lable_move;
+		}
+		for (i = snak->point[0]->y; i >= snak->point[0]->y - pointw; i--)
+		{
+			setlinecolor(RGB(3, 253, 10));
+			solidcircle(snak->point[0]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+		}
+		if (*headto == 2 || *headto == 3)
+		{
+			snak->num += 1;
+			snak->point = (POINT **)realloc(snak->point, snak->num * sizeof(POINT *));
+			for (j = snak->num - 1; j > 0; j--)
+			{
+				snak->point[j] = snak->point[j - 1];
+			}
+			snak->point[1] = (POINT *)malloc(sizeof(POINT));
+			snak->point[1]->x = snak->point[0]->x;
+			snak->point[1]->y = snak->point[0]->y;
+		}
+		snak->point[0]->y -= pointw;
+		*headto = 0;
+		break;
+	case 1://下
+		if (*headto == 0)
+		{
+			*derection = 0;
+			goto lable_move;
+		}
+		for (i = snak->point[0]->y; i <= snak->point[0]->y + pointw; i++)
+		{
+			setlinecolor(RGB(3, 253, 10));
+			solidcircle(snak->point[0]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+		}
+		if (*headto == 2 || *headto == 3)
+		{
+			snak->num += 1;
+			snak->point = (POINT **)realloc(snak->point, snak->num * sizeof(POINT *));
+			for (j = snak->num - 1; j > 0; j--)
+			{
+				snak->point[j] = snak->point[j - 1];
+			}
+			snak->point[1] = (POINT *)malloc(sizeof(POINT));
+			snak->point[1]->x = snak->point[0]->x;
+			snak->point[1]->y = snak->point[0]->y;
+		}
+		snak->point[0]->y += pointw;
+		*headto = 1;
+		break;
+	case 2://左
+		if (*headto == 3)
+		{
+			*derection = 3;
+			goto lable_move;
+		}
+		for (i = snak->point[0]->x; i >= snak->point[0]->x - pointw; i--)
+		{
+			setlinecolor(RGB(3, 253, 10));
+			solidcircle(i + snak->r / 2, snak->point[0]->y + snak->r / 2, snak->r / 2);
+		}
+		if (*headto == 0 || *headto == 1)
+		{
+			snak->num += 1;
+			snak->point = (POINT **)realloc(snak->point, snak->num * sizeof(POINT *));
+			for (j = snak->num - 1; j > 0; j--)
+			{
+				snak->point[j] = snak->point[j - 1];
+			}
+			snak->point[1] = (POINT *)malloc(sizeof(POINT));
+			snak->point[1]->x = snak->point[0]->x;
+			snak->point[1]->y = snak->point[0]->y;
+		}
+		snak->point[0]->x -= pointw;
+		*headto = 2;
+		break;
+	case 3://右
+		if (*headto == 2)
+		{
+			*derection = 2;
+			goto lable_move;
+		}
+		for (i = snak->point[0]->x; i <= snak->point[0]->x + pointw; i++)
+		{
+			setlinecolor(RGB(3, 253, 10));
+			solidcircle(i + snak->r / 2, snak->point[0]->y + snak->r / 2, snak->r / 2);
+		}
+		if (*headto == 0 || *headto == 1)
+		{
+			snak->num += 1;
+			snak->point = (POINT **)realloc(snak->point, snak->num * sizeof(POINT *));
+			for (j = snak->num - 1; j > 0; j--)
+			{
+				snak->point[j] = snak->point[j - 1];
+			}
+			snak->point[1] = (POINT *)malloc(sizeof(POINT));
+			snak->point[1]->x = snak->point[0]->x;
+			snak->point[1]->y = snak->point[0]->y;
+		}
+		snak->point[0]->x += pointw;
+		*headto = 3;
+		break;
+	default:
+		break;
+	}
+	if (eat)
+	{
+		return;
+	}
+	//竖直
+	if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
+	{
+		//向下
+		if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
+		{
+			for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
+			{
+				setfillcolor(background);
+				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+			}
+			snak->point[snak->num - 1]->y += pointw;
+			if (snak->point[snak->num - 2]->y == snak->point[snak->num - 1]->y)
+			{
+				free(snak->point[snak->num - 1]);
+				snak->num -= 1;
+			}
+			//向右
+			if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
+			{
+				for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
+				{
+					setfillcolor(RGB(3, 253, 10));
+					solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+				}
+			}
+			//向左
+			else if (snak->point[snak->num - 2]->x < snak->point[snak->num - 1]->x)
+			{
+				for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
+				{
+					setfillcolor(RGB(3, 253, 10));
+					solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+				}
+			}
+			else
+			{
+				setfillcolor(RGB(3, 253, 10));
+				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+			}
+		}
+		//向上
+		else
+		{
+			for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
+			{
+				setfillcolor(background);
+				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+			}
+			snak->point[snak->num - 1]->y -= pointw;
+			if (snak->point[snak->num - 2]->y == snak->point[snak->num - 1]->y)
+			{
+				free(snak->point[snak->num - 1]);
+				snak->num -= 1;
+			}
+			//向右
+			if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
+			{
+				for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
+				{
+					setfillcolor(RGB(3, 253, 10));
+					solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+				}
+			}
+			//向左
+			else if (snak->point[snak->num - 2]->x < snak->point[snak->num - 1]->x)
+			{
+				for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
+				{
+					setfillcolor(RGB(3, 253, 10));
+					solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+				}
+			}
+			else
+			{
+				setfillcolor(RGB(3, 253, 10));
+				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+			}
+		}
+	}
+	//水平
+	else
+	{
+		//向右
+		if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
+		{
+			for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
+			{
+				setfillcolor(background);
+				solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+			}
+			snak->point[snak->num - 1]->x += pointw;
+			if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
+			{
+				free(snak->point[snak->num - 1]);
+				snak->num -= 1;
+			}
+			//向下
+			if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
+			{
+				for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
+				{
+					setfillcolor(RGB(3, 253, 10));
+					solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+				}
+			}
+			//向上
+			else if (snak->point[snak->num - 2]->y < snak->point[snak->num - 1]->y)
+			{
+				for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
+				{
+					setfillcolor(RGB(3, 253, 10));
+					solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+				}
+			}
+			else
+			{
+				setfillcolor(RGB(3, 253, 10));
+				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+			}
+		}
+		//向左
+		else
+		{
+			for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
+			{
+				setfillcolor(background);
+				solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+			}
+			snak->point[snak->num - 1]->x -= pointw;
+			if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
+			{
+				free(snak->point[snak->num - 1]);
+				snak->num -= 1;
+			}
+			//向下
+			if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
+			{
+				for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
+				{
+					setfillcolor(RGB(3, 253, 10));
+					solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+				}
+			}
+			//向上
+			else if (snak->point[snak->num - 2]->y < snak->point[snak->num - 1]->y)
+			{
+				for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
+				{
+					setfillcolor(RGB(3, 253, 10));
+					solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+				}
+			}
+			else
+			{
+				setfillcolor(RGB(3, 253, 10));
+				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
+			}
+		}
+	}
+}
+
+/*
+函数功能：控制蛇的移动
+函数参数：蛇的朝向与指令
+函数返回值：无
+*/
+void *movecontrlthread(void *args)
+{
+	int *headto, *derection;
+	int kb1, kb2;
+
+	derection = (int *)*(int **)args;
+	headto = (int *)*((int **)args + 1);
+
+	while (true)
+	{
+		if (exitcontrl)
+		{
+			break;
+		}
+		if (_kbhit())
+		{
+			kb1 = _getch();
+			if (kb1 == 0xE0)
+			{
+				kb2 = _getch();
+				switch (kb2)
+				{
+				case 0X48:
+					*headto = *derection;
+					*derection = 0;
+					break;
+				case 0X50:
+					*headto = *derection;
+					*derection = 1;
+					break;
+				case 0X4B:
+					*headto = *derection;
+					*derection = 2;
+					break;
+				case 0X4D:
+					*headto = *derection;
+					*derection = 3;
+					break;
+				default:
+					break;
+				}
+			}
+			else
+			{
+				switch (kb1)
+				{
+				case 'w':
+					*headto = *derection;
+					*derection = 0;
+					break;
+				case 's':
+					*headto = *derection;
+					*derection = 1;
+					break;
+				case 'a':
+					*headto = *derection;
+					*derection = 2;
+					break;
+				case 'd':
+					*headto = *derection;
+					*derection = 3;
+					break;
+				case ' ':
+					while (_getch() != ' ')
+					{
+						Sleep(1);
+					}
+					break;
+				default:
+					break;
+				}
+			}
+		}
+	}
+	
+	return NULL;
+}
