@@ -93,7 +93,7 @@ void drawsnake(snake *snak);
 food *drawfood(wall *Wall, snake *snak);
 void drawscore(int score, int section, input *playground);
 void movesnake(snake *snak, int *derection, int *headto, bool eat);
-//void *movecontrlthread(void *args);
+void *contrlthread(void *args);
 bool iseat(snake *snak, food *fod);
 void notice(int section, input *playground);
 bool death(unsigned int score, unsigned int time);
@@ -102,6 +102,7 @@ void writeinfo(user *head);
 RECT windows;
 bool islogin = false;
 bool exitinputthread = false;
+bool exitcontrlthread = false;
 user usr;
 //base64表单
 static const char *ALPHA_BASE = "ABFOghijkl01GHImnopDEXYZJfwKLMNqrs34567tuvPQRSTUVWC289+/abcdexyz";
@@ -896,7 +897,7 @@ int regest(char **input)
 	fclose(fp);
 	islogin = true;
 	strcpy_s(usr.username, sizeof(usr.username), input[0]);
-	strcpy_s(usr.password, sizeof(usr.password), input[1]);
+	strcpy_s(usr.password, sizeof(usr.password), encode(input[1],strlen(input[1])));
 	usr.maxscore = usr.timem = usr.timeh = usr.times = usr.playcount = 0;
 	usr.order = 99;
 
@@ -919,9 +920,9 @@ void play(void)
 	int speed = 40;
 	int idifficult;
 	int i;
-	/*pthread_t contrl_thread;
-	void *args[4];
-	bool flag = false;*/
+	pthread_t contrl_thread;
+	void *args;
+	bool ctrlflag = false;
 	food *fod;
 	bool beat = false;
 	unsigned int score = 0, section = 1;
@@ -949,6 +950,8 @@ void play(void)
 	{
 		return;
 	}
+	args = &ctrlflag;
+	pthread_create(&contrl_thread, NULL, contrlthread, args);
 lable_restart:
 	derection = 3, headto = 3;
 	playground = initplay();
@@ -959,12 +962,8 @@ lable_restart:
 	drawscore(score, section, playground);
 	notice(section, playground);
 	time0 = clock();
-	fflush(stdin);
-	//args[0] = &derection;
-	//args[1] = &headto;
-	//args[2] = &speed;
-	//args[3] = &flag;
-	//pthread_create(&contrl_thread, NULL, movecontrlthread, args);
+	//https://codeabc.cn/yangw/post/empty-the-keyboard-buffer-under-vc  清空键盘缓冲区 
+	FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
 	while (true)
 	{
 		if (_kbhit())
@@ -1070,6 +1069,7 @@ lable_restart:
 			}
 			else
 			{
+				exitcontrlthread = true;
 				free(playground);
 				if (Wall != NULL)
 				{
@@ -1081,10 +1081,20 @@ lable_restart:
 				{
 					free(snak.point[i]);
 				}
+				Sleep(1);
+				exitcontrlthread = false;
 				break;
 			}
 		}
-		Sleep(10000 / speed);
+		if (ctrlflag)
+		{
+			Sleep(10000 / speed / 4);
+		}
+		else
+		{
+			Sleep(10000 / speed);
+		}
+	
 	}
 }
 
@@ -1093,7 +1103,6 @@ lable_restart:
 函数参数：无
 函数返回值：游戏区域
 */
-
 input *initplay(void)
 {
 	input *playground;
@@ -1648,88 +1657,34 @@ lable_head:
 }
 
 /*
-函数功能：控制蛇的移动
-函数参数：蛇的朝向与指令
+函数功能：判断ctrl是否按下
+函数参数：指向flag的指针
 函数返回值：无
 */
-/*void *movecontrlthread(void *args)
+void *contrlthread(void *args)
 {
-	int *headto, *derection;
-	int kb1, kb2;
-	int i = 0;
-	int *speed;
 	bool *flag;
 
-	derection = (int *)*(int **)args;
-	headto = (int *)*((int **)args + 1);
-	speed = (int *)*((int **)args + 2);
-	flag = (bool *)*((bool **)args + 3);
+	flag = (bool *)args;
 
 	while (true)
 	{
-		if (exitcontrl)
+		if (exitcontrlthread)
 		{
 			break;
 		}
-		if (*flag)
+		//https://baike.so.com/doc/6058819-6271869.html
+		if (GetKeyState(VK_CONTROL) < 0)		//如果ctrl被按下 
 		{
-			kb1 = _getch();
-			if (kb1 == 0xE0)
-			{
-				kb2 = _getch();
-				switch (kb2)
-				{
-				case 0X48:
-					*headto = *derection;
-					*derection = 0;
-					break;
-				case 0X50:
-					*headto = *derection;
-					*derection = 1;
-					break;
-				case 0X4B:
-					*headto = *derection;
-					*derection = 2;
-					break;
-				case 0X4D:
-					*headto = *derection;
-					*derection = 3;
-					break;
-				default:
-					break;
-				}
-			}
-			else
-			{
-				switch (kb1)
-				{
-				case 'w':
-					*headto = *derection;
-					*derection = 0;
-					break;
-				case 's':
-					*headto = *derection;
-					*derection = 1;
-					break;
-				case 'a':
-					*headto = *derection;
-					*derection = 2;
-					break;
-				case 'd':
-					*headto = *derection;
-					*derection = 3;
-					break;
-				default:
-					break;
-				}
-			}
+			*flag = true;
+		}
+		else
+		{
 			*flag = false;
 		}
-		Sleep(100 / *speed);
 	}
-
 	return NULL;
-}*/
+}
 
 /*
 函数功能：判断食物是否被吃
@@ -1805,10 +1760,10 @@ bool death(unsigned int score, unsigned int time)
 	setfillcolor(background);
 	solidrectangle(200 + pointw, 50 + pointw, winw - 200 - pointw, winh - 50 - pointw);
 	//Game Over
-	str[0] = inittext("Game Over", 0, -150);
 	settextstyle(70, 0, "微软雅黑");
 	setbkcolor(background);
 	settextcolor(noticecolor);
+	str[0] = inittext("Game Over", 0, -150);
 	outtextxy(str[0].x, str[0].y, str[0].tstr);
 	//显示所得分数
 	usedsize = totlesize = 0;
@@ -1837,8 +1792,8 @@ bool death(unsigned int score, unsigned int time)
 				pp->order += 1;
 			}
 		}
-		//计算分数大于当前玩家的人数
-		if (pp->maxscore > score)
+		//计算分数大于等于当前玩家的人数
+		if (pp->maxscore >= score)
 		{
 			count++;
 		}
@@ -1946,7 +1901,7 @@ if (fp == NULL)
 		}
 		else
 		{
-			fprintf_s(fp, "%s %s %u %u %u %u %u %u\n", pp->username, pp->password, pp->playcount, pp->timeh, pp->timem, usr.times, pp->maxscore, pp->order);
+			fprintf_s(fp, "%s %s %u %u %u %u %u %u\n", pp->username, pp->password, pp->playcount, pp->timeh, pp->timem, pp->times, pp->maxscore, pp->order);
 		}
 		pp = pp->next;
 	}
