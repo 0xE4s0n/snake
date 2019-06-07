@@ -9,16 +9,20 @@
 
 #define winw 1000 //窗口宽度
 #define winh 500 //窗口高度
-#define background RGB(0xE0, 0xEE, 0xE0) //背景色
-//#define background BLACK //背景色
+#define background RGB(224, 238, 224) //背景色
+//#define background BLACK //背景色 
 #define titlecolor1 RED//标题颜色1
-#define titlecolor2 RGB(0xff, 0x00, 0x00)//标题颜色2
-#define menutextcolor RGB(0x8b, 0x2e, 0x3f)//菜单字体颜色
-#define tipstextcolor RGB(0xff, 0x00, 0x00) //tips颜色
+#define titlecolor2 RGB(255, 0, 0)//标题颜色2
+#define menutextcolor RGB(139, 46, 63)//菜单字体颜色
+#define tipstextcolor RGB(255, 0, 0) //tips颜色
 #define scoretextcolor RGB(255, 99, 71) //排行榜字体颜色
-#define edittextcolor RGB(0xbf, 0xbf, 0xbf)//输入框颜色
+#define edittextcolor RGB(191, 191, 191)//输入框颜色
+#define snakecolor RGB(3, 253, 10)//蛇的颜色
+#define foodcolor RGB(255, 105, 119)//食物的颜色
+#define scorecolor RGB(52, 250, 242)//游戏界面分数颜色
+#define noticecolor RGB(255, 27, 29)//关卡提示文字颜色
 #define finfo "userinfo.txt" //用户信息保存文件
-#define pointw 16
+#define pointw 15
 
 
 //保存用户信息
@@ -27,7 +31,7 @@ typedef struct USER {
 	char password[17];
 	unsigned int playcount;
 	unsigned int maxscore;
-	unsigned int timeh, timem;
+	unsigned int timeh, timem,times;
 	unsigned int order;
 	struct USER *next;
 }user;
@@ -35,7 +39,7 @@ typedef struct USER {
 //蛇的身体
 typedef struct SNAKE {
 	POINT **point;
-	int r = pointw;
+	int r = pointw / 2;
 	int num;
 }snake;
 
@@ -43,7 +47,7 @@ typedef struct SNAKE {
 typedef struct FOOD {
 	int x;
 	int y;
-	int r = pointw;
+	int r = pointw / 2;
 }food;
 
 //字符串图形
@@ -81,20 +85,25 @@ char *encode(const char *buf, const long size);
 int regest(char **input);
 input *initplay(void);
 void play(void);
-bool death(snake *snakehead, input playground, wall *Wall);
+bool isdeath(snake *snakehead, input playground, wall *Wall);
 wall *initwall(int idifficult);
 POINT *getwallpostion(int num);
 void drawwall(wall *Wall);
 void drawsnake(snake *snak);
+food *drawfood(wall *Wall, snake *snak);
+void drawscore(int score, int section, input *playground);
 void movesnake(snake *snak, int *derection, int *headto, bool eat);
-void *movecontrlthread(void *args);
+//void *movecontrlthread(void *args);
+bool iseat(snake *snak, food *fod);
+void notice(int section, input *playground);
+bool death(unsigned int score, unsigned int time);
+void writeinfo(user *head);
 
 RECT windows;
 bool islogin = false;
 bool exitinputthread = false;
-bool exitcontrl = false;
 user usr;
-//base64表
+//base64表单
 static const char *ALPHA_BASE = "ABFOghijkl01GHImnopDEXYZJfwKLMNqrs34567tuvPQRSTUVWC289+/abcdexyz";
 
 int main(void)
@@ -303,7 +312,7 @@ string inittext(const char *str, int pianx, int piany)
 */
 void about(void)
 {
-	string about[3];
+	string about[5];
 	IMAGE alipay, wenxinpay;
 
 	setbkcolor(background);
@@ -311,8 +320,8 @@ void about(void)
 	while (true)
 	{
 		//输出图片
-		loadimage(&alipay, "C:\\Users\\0xEASONs\\Pictures\\Saved Pictures\\alipay.jpg", 240, 360);
-		loadimage(&wenxinpay, "C:\\Users\\0xEASONs\\Pictures\\Saved Pictures\\weixinpay.png", 240, 360);
+		loadimage(&alipay, "alipay.jpg", 240, 360);
+		loadimage(&wenxinpay, "weixinpay.png", 240, 360);
 		putimage(40, 100, &alipay);
 		putimage(winw - 40 - 240, 100, &wenxinpay);
 
@@ -320,12 +329,19 @@ void about(void)
 		setfillcolor(background);
 		about[0] = inittext("支持作者", 0, -120);
 		outtextxy(about[0].x, about[0].y, about[0].tstr);
-		about[1] = inittext("一个吃土的程序猿", 0, -40);
+		about[1] = inittext("一个吃土的程序猿", 0, -60);
 		outtextxy(about[1].x, about[1].y, about[1].tstr);
-
-		about[2] = inittext("返回", 0, 120);
+		settextstyle(40, 0, "微软雅黑");
+		setfillcolor(background);
+		about[2] = inittext("重置密码联系作者", 0, 0);
 		outtextxy(about[2].x, about[2].y, about[2].tstr);
-		if (mousehandle(about + 2, 1) == 0)//点击返回
+		about[3] = inittext("QQ:1181499949", 0, 60);
+		outtextxy(about[3].x, about[3].y, about[3].tstr);
+		settextstyle(50, 0, "微软雅黑");
+		setfillcolor(background);
+		about[4] = inittext("返回", 0, 120);
+		outtextxy(about[4].x, about[4].y, about[4].tstr);
+		if (mousehandle(about + 4, 1) == 0)//点击返回
 		{
 			break;
 		}
@@ -384,6 +400,8 @@ void score(void)
 			tmp = mystrcat(tmp, &usedsize, &totlesize, "时");
 			tmp = myintcat(tmp, &usedsize, &totlesize, pp->timem);
 			tmp = mystrcat(tmp, &usedsize, &totlesize, "分");
+			tmp = myintcat(tmp, &usedsize, &totlesize, pp->times);
+			tmp = mystrcat(tmp, &usedsize, &totlesize, "秒");
 			data[i][2] = inittext(tmp, -winw / 2 + 400 + 10, -winh / 2 + 80 + (pp->order - 1) * 40);
 			//最高成绩
 			tmp = NULL;
@@ -440,7 +458,7 @@ user *readinfo(void)
 		exit(-1);
 	}
 	pp = (user *)malloc(sizeof(user));
-	while (fscanf_s(fp, "%s %s %u %u %u %u %u", pp->username, _countof(pp->username), pp->password, _countof(pp->password), &pp->playcount, &pp->timeh, &pp->timem, &pp->maxscore, &pp->order) == 7)
+	while (fscanf_s(fp, "%s %s %u %u %u %u %u %u", pp->username, _countof(pp->username), pp->password, _countof(pp->password), &pp->playcount, &pp->timeh, &pp->timem, &pp->times, &pp->maxscore, &pp->order) == 8)
 	{
 		if (head == NULL)
 		{
@@ -466,7 +484,7 @@ user *readinfo(void)
 /*
 函数功能：写字符串到指定地址
 函数参数：待写入内存首地址 已使用空间 总空间 待加入字符串
-函数返回值：
+函数返回值：处理完的字符串的地址
 */
 char *mystrcat(char *tmp, unsigned int *usedsize, unsigned int *totlesize, const char *cstr)
 {
@@ -483,7 +501,7 @@ char *mystrcat(char *tmp, unsigned int *usedsize, unsigned int *totlesize, const
 /*
 函数功能：将int转为字符串并写入到指定地址
 函数参数：待写入内存首地址 已使用空间 总空间 待加入int
-函数返回值：
+函数返回值：处理完的字符串的地址
 */
 char *myintcat(char *tmp, unsigned int *usedsize, unsigned int *totlesize, unsigned int iInt)
 {
@@ -593,7 +611,8 @@ void login(void)
 		}
 	}
 lable_exit:
-	;
+	free(cinput[0]);
+	free(cinput[1]);
 }
 
 /*
@@ -638,6 +657,7 @@ void *inputthread(void *args)
 	{
 		if (exitinputthread)
 		{
+			free(password_hide);
 			break;
 		}
 		//0.5秒的偶数倍且光标不可见
@@ -774,6 +794,7 @@ int checkpassword(char **input)
 				usr.order = pp->order;
 				usr.timeh = pp->timeh;
 				usr.timem = pp->timem;
+				usr.times = pp->times;
 				usr.maxscore = pp->maxscore;
 				pp = head;
 				while (pp != NULL)
@@ -833,7 +854,7 @@ char *encode(const char *buf, const long size) {
 函数参数：帐号密码
 函数返回值：无
 */
-int regest(char **input)
+int regest(char **input) 
 {
 	user *head = NULL, *pp = NULL, *pn = NULL;
 	FILE *fp = NULL;
@@ -871,12 +892,12 @@ int regest(char **input)
 		MessageBox(GetHWnd(), "没有找到用户信息文件", "错误", MB_ICONERROR);
 		exit(-1);
 	}
-	fprintf_s(fp, "%s %s %u %u %u %u %u\n", input[0], encode(input[1], strlen(input[1])), 0, 0, 0, 0, 99);
+	fprintf_s(fp, "%s %s %u %u %u %u %u %u\n", input[0], encode(input[1], strlen(input[1])), 0, 0, 0, 0, 0, 99);
 	fclose(fp);
 	islogin = true;
 	strcpy_s(usr.username, sizeof(usr.username), input[0]);
 	strcpy_s(usr.password, sizeof(usr.password), input[1]);
-	usr.maxscore = usr.timem = usr.timeh = usr.playcount = 0;
+	usr.maxscore = usr.timem = usr.timeh = usr.times = usr.playcount = 0;
 	usr.order = 99;
 
 	return 2;//注册成功
@@ -890,15 +911,21 @@ int regest(char **input)
 void play(void)
 {
 	input *playground;
-	string difficult[4];
+	string difficult[5];
 	wall *Wall;
 	snake snak;
-	int derection = 3, headto = 3;
-	int speed = 1;
+	int derection, headto;
+	int kb1, kb2;
+	int speed = 40;
 	int idifficult;
 	int i;
-	pthread_t contrl_thread;
-	void *args[2];
+	/*pthread_t contrl_thread;
+	void *args[4];
+	bool flag = false;*/
+	food *fod;
+	bool beat = false;
+	unsigned int score = 0, section = 1;
+	unsigned int time0, time1, timesum = 0;
 
 	if (!islogin)
 	{
@@ -912,46 +939,153 @@ void play(void)
 	difficult[1] = inittext("一般", 0, -winh / 2 + 215);
 	difficult[2] = inittext("困难", 0, -winh / 2 + 285);
 	difficult[3] = inittext("噩梦", 0, -winh / 2 + 355);
-	for (i = 0; i < 4; i++)
+	difficult[4] = inittext("返回", 300, -winh / 2 + 450);
+	for (i = 0; i < 5; i++)
 	{
 		outtextxy(difficult[i].x, difficult[i].y, difficult[i].tstr);
 	}
-	idifficult = mousehandle(difficult, 4);
-
+	idifficult = mousehandle(difficult, 5);
+	if (idifficult == 4)
+	{
+		return;
+	}
+lable_restart:
+	derection = 3, headto = 3;
 	playground = initplay();
 	Wall = initwall(idifficult);
 	drawwall(Wall);
 	drawsnake(&snak);
-	args[0] = &derection;
-	args[1] = &headto;
-	pthread_create(&contrl_thread, NULL, movecontrlthread, args);
+	fod = drawfood(Wall, &snak);
+	drawscore(score, section, playground);
+	notice(section, playground);
+	time0 = clock();
+	fflush(stdin);
+	//args[0] = &derection;
+	//args[1] = &headto;
+	//args[2] = &speed;
+	//args[3] = &flag;
+	//pthread_create(&contrl_thread, NULL, movecontrlthread, args);
 	while (true)
 	{
-		if(_kbhit())
+		if (_kbhit())
 		{
-			if (_getch() == ' ')
+			kb1 = _getch();
+			if (kb1 == 0xE0)
 			{
-				while (_getch() != ' ')
+				kb2 = _getch();
+				switch (kb2)
 				{
-					Sleep(1);
+				case 0X48:
+					headto = derection;
+					derection = 0;
+					break;
+				case 0X50:
+					headto = derection;
+					derection = 1;
+					break;
+				case 0X4B:
+					headto = derection;
+					derection = 2;
+					break;
+				case 0X4D:
+					headto = derection;
+					derection = 3;
+					break;
+				default:
+					break;
 				}
 			}
 			else
 			{
-				ungetc(' ', stdin);
+				switch (kb1)
+				{
+				case 'w':
+					headto = derection;
+					derection = 0;
+					break;
+				case 's':
+					headto = derection;
+					derection = 1;
+					break;
+				case 'a':
+					headto = derection;
+					derection = 2;
+					break;
+				case 'd':
+					headto = derection;
+					derection = 3;
+					break;
+				case 'W':
+					headto = derection;
+					derection = 0;
+					break;
+				case 'S':
+					headto = derection;
+					derection = 1;
+					break;
+				case 'A':
+					headto = derection;
+					derection = 2;
+					break;
+				case 'D':
+					headto = derection;
+					derection = 3;
+					break;
+				case ' ':
+					while (_getch() != ' ')
+					{
+						Sleep(1);
+					}
+				default:
+					break;
+				}
 			}
 		}
-		movesnake(&snak, &derection, &headto, false);
-		if (death(&snak, *playground, Wall))
+
+		movesnake(&snak, &derection, &headto, beat);
+		if ((beat = iseat(&snak, fod)) == true)
 		{
-			exitcontrl = true;
-			Sleep(1);
-			exitcontrl = false;
-			break;
+			drawscore(++score, section, playground);
+			if (score % 10 == 0)
+			{
+				time1 = clock();
+				timesum += (time1 - time0);
+				Sleep(1000);
+				section++;
+				speed += 5;
+				goto lable_restart;
+			}
+			fod = drawfood(Wall, &snak);
 		}
-		Sleep(100 / speed);
+		if (isdeath(&snak, *playground, Wall))
+		{
+			time1 = clock();
+			timesum += (time1 - time0);
+			if (death(score, timesum))
+			{
+				speed = 40;
+				score = 0, section = 1;
+				timesum = 0;
+				goto lable_restart;
+			}
+			else
+			{
+				free(playground);
+				if (Wall != NULL)
+				{
+					free(Wall->point);
+					free(Wall);
+				}
+				free(fod);
+				for (i = 0; i < snak.num; i++)
+				{
+					free(snak.point[i]);
+				}
+				break;
+			}
+		}
+		Sleep(10000 / speed);
 	}
-	_getch();
 }
 
 /*
@@ -959,6 +1093,7 @@ void play(void)
 函数参数：无
 函数返回值：游戏区域
 */
+
 input *initplay(void)
 {
 	input *playground;
@@ -981,12 +1116,14 @@ input *initplay(void)
 
 	settextstyle(50, 0, "微软雅黑");
 	setbkcolor(background);
+	settextcolor(menutextcolor);
 	scorebored[0] = inittext("当前分数", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 20);
 	outtextxy(scorebored[0].x + scorebored[0].w / 2, scorebored[0].y + scorebored[0].h / 2, scorebored[0].tstr);
 	scorebored[1] = inittext("当前关卡", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 170);
 	outtextxy(scorebored[1].x + scorebored[1].w / 2, scorebored[1].y + scorebored[1].h / 2, scorebored[1].tstr);
 	settextstyle(30, 0, "微软雅黑");
 	setbkcolor(background);
+	settextcolor(menutextcolor);
 	tips[0] = inittext("方向键移动", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 400);
 	outtextxy(tips[0].x + tips[0].w / 2, tips[0].y + tips[0].h / 2, tips[0].tstr);
 	tips[1] = inittext("Ctrl加速", -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 430);
@@ -1002,20 +1139,20 @@ input *initplay(void)
 函数参数：指向蛇的结构体，游戏区域
 函数返回值：死亡与否
 */
-bool death(snake *snakehead, input playground, wall *Wall)
+bool isdeath(snake *snakehead, input playground, wall *Wall)
 {
 	int i;
 
 	for (i = 1; i < (snakehead->num - 1); i++)
 	{
-		if ((snakehead->point[0]->x - snakehead->point[i]->x) * (snakehead->point[0]->x - snakehead->point[i + 1]->x) < 0)//在水平两点之间
+		if ((snakehead->point[0]->x - snakehead->point[i]->x) * (snakehead->point[0]->x - snakehead->point[i + 1]->x) <= 0)//在水平两点之间  ！！或三点重合
 		{
 			if (snakehead->point[0]->y == snakehead->point[i]->y)
 			{
 				return true;
 			}
 		}
-		else if ((snakehead->point[0]->y - snakehead->point[i]->y) * (snakehead->point[0]->y - snakehead->point[i + 1]->y) < 0)//在竖直两点之间
+		if ((snakehead->point[0]->y - snakehead->point[i]->y) * (snakehead->point[0]->y - snakehead->point[i + 1]->y) <= 0)//在竖直两点之间  ！！或三点重合
 		{
 			if (snakehead->point[0]->x == snakehead->point[i]->x)
 			{
@@ -1089,13 +1226,19 @@ POINT *getwallpostion(int num)
 	for (i = 0; i < num; i++)
 	{
 		seed = rand();
-		wall[i].x = ((seed % 600 + 100) / pointw) * pointw;
+		wall[i].x = ((seed % (700 - 2 * pointw)) / pointw) * pointw + 1 * pointw;
 		srand(seed);
 		seed = rand();
-		wall[i].y = ((seed % 450 + 50) / pointw) * pointw;
+		if (wall[i].x <= pointw * 11)
+		{
+			wall[i].y = ((seed % (500 - 7 * pointw)) / pointw) * pointw + 6 * pointw;
+		}
+		else
+		{
+			wall[i].y = ((seed % (500 - 2 * pointw)) / pointw) * pointw + 1 * pointw;
+		}
 	}
 	return wall;
-
 }
 
 /*
@@ -1128,13 +1271,94 @@ void drawsnake(snake *snak)
 	snak->point[0] = (POINT *)malloc(sizeof(POINT));
 	snak->point[1] = (POINT *)malloc(sizeof(POINT));
 	snak->point[0]->y = snak->point[1]->y = 2 * pointw;
-	snak->point[0]->x = pointw * 20;
+	snak->point[0]->x = pointw * 5;
 	snak->point[1]->x = pointw * 1;
-	for (i = snak->point[1]->x + snak->r / 2; i <= snak->point[0]->x + snak->r / 2; i++)
+	for (i = snak->point[1]->x + snak->r; i <= snak->point[0]->x + snak->r; i++)
 	{
-		setfillcolor(RGB(3, 253, 10));
-		solidcircle(i, snak->point[0]->y + snak->r / 2, snak->r / 2);
+		setfillcolor(snakecolor);
+		solidcircle(i, snak->point[0]->y + snak->r, snak->r);
 	}
+}
+
+/*
+函数功能：画出食物
+函数参数：指向障碍物的指针
+函数返回值：无
+*/
+food *drawfood(wall *Wall, snake *snak)
+{
+	food *fod;
+	static int seed = (int)time(0);
+	int i;
+
+	fod = (food *)malloc(sizeof(food));
+lable_restart:
+	srand(seed);
+	seed = rand();
+	fod->x = ((seed % (700 - 2 * pointw)) / pointw) * pointw + 1 * pointw;
+	srand(seed);
+	seed = rand();
+	fod->y = ((seed % (500 - 3 * pointw)) / pointw) * pointw + 1 * pointw;
+	fod->r = pointw / 2;
+
+	for (i = 0; i < Wall->num; i++)//不与墙重合
+	{
+		if ((fod->x == Wall->point[i].x) && (fod->y == Wall->point[i].y))
+		{
+			goto lable_restart;
+		}
+	}
+	for (i = 0; i < snak->num - 1; i++)//不与蛇重合
+	{
+		if ((fod->x - snak->point[i]->x) * (fod->x - snak->point[i + 1]->x) < 0)//在水平两点之间  ！！或三点重合
+		{
+			if (fod->y == snak->point[i]->y)
+			{
+				goto lable_restart;
+			}
+		}
+		if ((fod->y - snak->point[i]->y) * (fod->y - snak->point[i + 1]->y) < 0)//在竖直两点之间  ！！或三点重合
+		{
+			if (fod->x == snak->point[i]->x)
+			{
+				goto lable_restart;
+			}
+		}
+	}
+
+	setfillcolor(foodcolor);
+	solidcircle(fod->x + pointw / 2, fod->y + pointw / 2, fod->r);
+
+	return fod;
+}
+
+/*
+函数功能：画出成绩
+函数参数：指向游戏区域的指针，成绩
+函数返回值：无
+*/
+void drawscore(int score, int section, input *playground)
+{
+	string scorebored[2];
+	char *cscore = NULL;
+	char *csection = NULL;
+	unsigned int usedsize = 0, totlesize = 0;
+
+	cscore = myintcat(cscore, &usedsize, &totlesize, score);
+	usedsize = 0, totlesize = 0;
+	csection = myintcat(csection, &usedsize, &totlesize, section);
+	scorebored[0] = inittext(cscore, -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 70);
+	scorebored[1] = inittext(csection, -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 220);
+	setfillcolor(background);
+	solidrectangle(scorebored[0].x + scorebored[0].w / 2 + 60, scorebored[0].y + scorebored[0].h / 2, scorebored[0].x + 3 * scorebored[0].w / 2 + 60, scorebored[0].y + 3 * scorebored[0].h / 2);
+	solidrectangle(scorebored[1].x + scorebored[0].w / 2 + 60, scorebored[1].y + scorebored[1].h / 2, scorebored[0].x + 3 * scorebored[1].w / 2 + 60, scorebored[1].y + 3 * scorebored[1].h / 2);
+	settextstyle(50, 0, "微软雅黑");
+	setbkcolor(background);
+	settextcolor(scorecolor);
+	outtextxy(scorebored[0].x + scorebored[0].w / 2 + 60, scorebored[0].y + scorebored[0].h / 2, scorebored[0].tstr);
+	outtextxy(scorebored[1].x + scorebored[1].w / 2 + 60, scorebored[1].y + scorebored[1].h / 2, scorebored[1].tstr);
+	free(csection);
+	free(cscore);
 }
 
 /*
@@ -1146,19 +1370,183 @@ void movesnake(snake *snak, int *derection, int *headto, bool eat)
 {
 	int i, j;
 
-lable_move:
+	if (eat)
+	{
+		goto lable_head;
+	}
+	//竖直
+	if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
+	{
+		//向下
+		if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
+		{
+			for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
+			{
+				setfillcolor(background);
+				solidcircle(snak->point[snak->num - 1]->x + snak->r, i + snak->r, snak->r);
+			}
+			snak->point[snak->num - 1]->y += pointw;
+			if (snak->point[snak->num - 2]->y == snak->point[snak->num - 1]->y)
+			{
+				free(snak->point[snak->num - 1]);
+				snak->num -= 1;
+			}
+			//向右
+			if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
+			{
+				for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
+				{
+					setfillcolor(snakecolor);
+					solidcircle(i + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+				}
+			}
+			//向左
+			else if (snak->point[snak->num - 2]->x < snak->point[snak->num - 1]->x)
+			{
+				for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
+				{
+					setfillcolor(snakecolor);
+					solidcircle(i + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+				}
+			}
+			else
+			{
+				setfillcolor(snakecolor);
+				solidcircle(snak->point[snak->num - 1]->x + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+			}
+		}
+		//向上
+		else
+		{
+			for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
+			{
+				setfillcolor(background);
+				solidcircle(snak->point[snak->num - 1]->x + snak->r, i + snak->r, snak->r);
+			}
+			snak->point[snak->num - 1]->y -= pointw;
+			if (snak->point[snak->num - 2]->y == snak->point[snak->num - 1]->y)
+			{
+				free(snak->point[snak->num - 1]);
+				snak->num -= 1;
+			}
+			//向右
+			if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
+			{
+				for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
+				{
+					setfillcolor(snakecolor);
+					solidcircle(i + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+				}
+			}
+			//向左
+			else if (snak->point[snak->num - 2]->x < snak->point[snak->num - 1]->x)
+			{
+				for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
+				{
+					setfillcolor(snakecolor);
+					solidcircle(i + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+				}
+			}
+			else
+			{
+				setfillcolor(snakecolor);
+				solidcircle(snak->point[snak->num - 1]->x + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+			}
+		}
+	}
+	//水平
+	else
+	{
+		//向右
+		if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
+		{
+			for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
+			{
+				setfillcolor(background);
+				solidcircle(i + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+			}
+			snak->point[snak->num - 1]->x += pointw;
+			if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
+			{
+				free(snak->point[snak->num - 1]);
+				snak->num -= 1;
+			}
+			//向下
+			if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
+			{
+				for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
+				{
+					setfillcolor(snakecolor);
+					solidcircle(snak->point[snak->num - 1]->x + snak->r, i + snak->r, snak->r);
+				}
+			}
+			//向上
+			else if (snak->point[snak->num - 2]->y < snak->point[snak->num - 1]->y)
+			{
+				for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
+				{
+					setfillcolor(snakecolor);
+					solidcircle(snak->point[snak->num - 1]->x + snak->r, i + snak->r, snak->r);
+				}
+			}
+			else
+			{
+				setfillcolor(snakecolor);
+				solidcircle(snak->point[snak->num - 1]->x + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+			}
+		}
+		//向左
+		else
+		{
+			for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
+			{
+				setfillcolor(background);
+				solidcircle(i + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+			}
+			snak->point[snak->num - 1]->x -= pointw;
+			if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
+			{
+				free(snak->point[snak->num - 1]);
+				snak->num -= 1;
+			}
+			//向下
+			if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
+			{
+				for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
+				{
+					setfillcolor(snakecolor);
+					solidcircle(snak->point[snak->num - 1]->x + snak->r, i + snak->r, snak->r);
+				}
+			}
+			//向上
+			else if (snak->point[snak->num - 2]->y < snak->point[snak->num - 1]->y)
+			{
+				for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
+				{
+					setfillcolor(snakecolor);
+					solidcircle(snak->point[snak->num - 1]->x + snak->r, i + snak->r, snak->r);
+				}
+			}
+			else
+			{
+				setfillcolor(snakecolor);
+				solidcircle(snak->point[snak->num - 1]->x + snak->r, snak->point[snak->num - 1]->y + snak->r, snak->r);
+			}
+		}
+	}
+lable_head:
 	switch (*derection)//移动
 	{
 	case 0://上
 		if (*headto == 1)
 		{
 			*derection = 1;
-			goto lable_move;
+			goto lable_head;
 		}
 		for (i = snak->point[0]->y; i >= snak->point[0]->y - pointw; i--)
 		{
-			setlinecolor(RGB(3, 253, 10));
-			solidcircle(snak->point[0]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+			setfillcolor(snakecolor);
+			solidcircle(snak->point[0]->x + snak->r, i + snak->r, snak->r);
 		}
 		if (*headto == 2 || *headto == 3)
 		{
@@ -1179,12 +1567,12 @@ lable_move:
 		if (*headto == 0)
 		{
 			*derection = 0;
-			goto lable_move;
+			goto lable_head;
 		}
 		for (i = snak->point[0]->y; i <= snak->point[0]->y + pointw; i++)
 		{
-			setlinecolor(RGB(3, 253, 10));
-			solidcircle(snak->point[0]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
+			setfillcolor(snakecolor);
+			solidcircle(snak->point[0]->x + snak->r, i + snak->r, snak->r);
 		}
 		if (*headto == 2 || *headto == 3)
 		{
@@ -1205,12 +1593,12 @@ lable_move:
 		if (*headto == 3)
 		{
 			*derection = 3;
-			goto lable_move;
+			goto lable_head;
 		}
 		for (i = snak->point[0]->x; i >= snak->point[0]->x - pointw; i--)
 		{
-			setlinecolor(RGB(3, 253, 10));
-			solidcircle(i + snak->r / 2, snak->point[0]->y + snak->r / 2, snak->r / 2);
+			setfillcolor(snakecolor);
+			solidcircle(i + snak->r, snak->point[0]->y + snak->r, snak->r);
 		}
 		if (*headto == 0 || *headto == 1)
 		{
@@ -1231,12 +1619,12 @@ lable_move:
 		if (*headto == 2)
 		{
 			*derection = 2;
-			goto lable_move;
+			goto lable_head;
 		}
 		for (i = snak->point[0]->x; i <= snak->point[0]->x + pointw; i++)
 		{
-			setlinecolor(RGB(3, 253, 10));
-			solidcircle(i + snak->r / 2, snak->point[0]->y + snak->r / 2, snak->r / 2);
+			setfillcolor(snakecolor);
+			solidcircle(i + snak->r, snak->point[0]->y + snak->r, snak->r);
 		}
 		if (*headto == 0 || *headto == 1)
 		{
@@ -1256,170 +1644,7 @@ lable_move:
 	default:
 		break;
 	}
-	if (eat)
-	{
-		return;
-	}
-	//竖直
-	if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
-	{
-		//向下
-		if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
-		{
-			for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
-			{
-				setfillcolor(background);
-				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
-			}
-			snak->point[snak->num - 1]->y += pointw;
-			if (snak->point[snak->num - 2]->y == snak->point[snak->num - 1]->y)
-			{
-				free(snak->point[snak->num - 1]);
-				snak->num -= 1;
-			}
-			//向右
-			if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
-			{
-				for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
-				{
-					setfillcolor(RGB(3, 253, 10));
-					solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-				}
-			}
-			//向左
-			else if (snak->point[snak->num - 2]->x < snak->point[snak->num - 1]->x)
-			{
-				for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
-				{
-					setfillcolor(RGB(3, 253, 10));
-					solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-				}
-			}
-			else
-			{
-				setfillcolor(RGB(3, 253, 10));
-				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-			}
-		}
-		//向上
-		else
-		{
-			for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
-			{
-				setfillcolor(background);
-				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
-			}
-			snak->point[snak->num - 1]->y -= pointw;
-			if (snak->point[snak->num - 2]->y == snak->point[snak->num - 1]->y)
-			{
-				free(snak->point[snak->num - 1]);
-				snak->num -= 1;
-			}
-			//向右
-			if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
-			{
-				for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
-				{
-					setfillcolor(RGB(3, 253, 10));
-					solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-				}
-			}
-			//向左
-			else if (snak->point[snak->num - 2]->x < snak->point[snak->num - 1]->x)
-			{
-				for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
-				{
-					setfillcolor(RGB(3, 253, 10));
-					solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-				}
-			}
-			else
-			{
-				setfillcolor(RGB(3, 253, 10));
-				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-			}
-		}
-	}
-	//水平
-	else
-	{
-		//向右
-		if (snak->point[snak->num - 2]->x > snak->point[snak->num - 1]->x)
-		{
-			for (i = snak->point[snak->num - 1]->x; i <= snak->point[snak->num - 1]->x + pointw; i++)
-			{
-				setfillcolor(background);
-				solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-			}
-			snak->point[snak->num - 1]->x += pointw;
-			if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
-			{
-				free(snak->point[snak->num - 1]);
-				snak->num -= 1;
-			}
-			//向下
-			if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
-			{
-				for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
-				{
-					setfillcolor(RGB(3, 253, 10));
-					solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
-				}
-			}
-			//向上
-			else if (snak->point[snak->num - 2]->y < snak->point[snak->num - 1]->y)
-			{
-				for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
-				{
-					setfillcolor(RGB(3, 253, 10));
-					solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
-				}
-			}
-			else
-			{
-				setfillcolor(RGB(3, 253, 10));
-				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-			}
-		}
-		//向左
-		else
-		{
-			for (i = snak->point[snak->num - 1]->x; i >= snak->point[snak->num - 1]->x - pointw; i--)
-			{
-				setfillcolor(background);
-				solidcircle(i + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-			}
-			snak->point[snak->num - 1]->x -= pointw;
-			if (snak->point[snak->num - 1]->x == snak->point[snak->num - 2]->x)
-			{
-				free(snak->point[snak->num - 1]);
-				snak->num -= 1;
-			}
-			//向下
-			if (snak->point[snak->num - 2]->y > snak->point[snak->num - 1]->y)
-			{
-				for (i = snak->point[snak->num - 1]->y; i <= snak->point[snak->num - 1]->y + pointw; i++)
-				{
-					setfillcolor(RGB(3, 253, 10));
-					solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
-				}
-			}
-			//向上
-			else if (snak->point[snak->num - 2]->y < snak->point[snak->num - 1]->y)
-			{
-				for (i = snak->point[snak->num - 1]->y; i >= snak->point[snak->num - 1]->y - pointw; i--)
-				{
-					setfillcolor(RGB(3, 253, 10));
-					solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, i + snak->r / 2, snak->r / 2);
-				}
-			}
-			else
-			{
-				setfillcolor(RGB(3, 253, 10));
-				solidcircle(snak->point[snak->num - 1]->x + snak->r / 2, snak->point[snak->num - 1]->y + snak->r / 2, snak->r / 2);
-			}
-		}
-	}
+
 }
 
 /*
@@ -1427,13 +1652,18 @@ lable_move:
 函数参数：蛇的朝向与指令
 函数返回值：无
 */
-void *movecontrlthread(void *args)
+/*void *movecontrlthread(void *args)
 {
 	int *headto, *derection;
 	int kb1, kb2;
+	int i = 0;
+	int *speed;
+	bool *flag;
 
 	derection = (int *)*(int **)args;
 	headto = (int *)*((int **)args + 1);
+	speed = (int *)*((int **)args + 2);
+	flag = (bool *)*((bool **)args + 3);
 
 	while (true)
 	{
@@ -1441,7 +1671,7 @@ void *movecontrlthread(void *args)
 		{
 			break;
 		}
-		if (_kbhit())
+		if (*flag)
 		{
 			kb1 = _getch();
 			if (kb1 == 0xE0)
@@ -1489,18 +1719,243 @@ void *movecontrlthread(void *args)
 					*headto = *derection;
 					*derection = 3;
 					break;
-				case ' ':
-					while (_getch() != ' ')
-					{
-						Sleep(1);
-					}
-					break;
 				default:
 					break;
 				}
 			}
+			*flag = false;
+		}
+		Sleep(100 / *speed);
+	}
+
+	return NULL;
+}*/
+
+/*
+函数功能：判断食物是否被吃
+函数参数：指向蛇的指针，指向食物的指针
+函数返回值：食物是否被吃
+*/
+bool iseat(snake *snak, food *fod)
+{
+	if (snak->point[0]->x == fod->x && snak->point[0]->y == fod->y)
+	{
+		return true;
+	}
+	return false;
+}
+
+/*
+函数功能：显示提示
+函数参数：关卡，指向游戏区域的指针
+函数返回值：无
+*/
+void notice(int section, input *playground)
+{
+	char *cnotice = NULL;
+	unsigned int usedsize = 0, totlesize = 0;
+	string snotice;
+	int i;
+
+	cnotice = mystrcat(cnotice, &usedsize, &totlesize, "关卡");
+	cnotice = myintcat(cnotice, &usedsize, &totlesize, section);
+	settextstyle(70, 0, "微软雅黑");
+	setbkcolor(background);
+	settextcolor(noticecolor);
+	snotice = inittext(cnotice, -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 270);
+	outtextxy(snotice.x + snotice.w / 2 + 30, snotice.y + snotice.h / 2, snotice.tstr);
+	Sleep(1000);
+	setfillcolor(background);
+	solidrectangle(snotice.x + snotice.w / 2 + 30, snotice.y + snotice.h / 2, snotice.x + 3 * snotice.w / 2 + 30, snotice.y + 3 * snotice.h / 2);
+	for (i = 3; i > 0; i--)
+	{
+		usedsize = 0, totlesize = 0;
+		cnotice = cnotice = myintcat(cnotice, &usedsize, &totlesize, i);
+		settextstyle(70, 0, "微软雅黑");
+		setbkcolor(background);
+		settextcolor(noticecolor);
+		snotice = inittext(cnotice, -winw / 2 + playground->x + playground->w + 80, -winh / 2 + 270);
+		outtextxy(snotice.x + snotice.w / 2 + 30, snotice.y + snotice.h / 2, snotice.tstr);
+		Sleep(1000);
+		setfillcolor(background);
+		solidrectangle(snotice.x + snotice.w / 2 + 30, snotice.y + snotice.h / 2, snotice.x + 3 * snotice.w / 2 + 30, snotice.y + 3 * snotice.h / 2);
+	}
+	free(cnotice);
+}
+
+/*
+函数功能：显示死亡提示与信息
+函数参数：分数，时间(毫秒)
+函数返回值：无
+*/
+bool death(unsigned int score, unsigned int time)
+{
+	string str[4];
+	string schoise[2];
+	char *cscore = NULL;
+	unsigned int usedsize = 0, totlesize = 0;
+	unsigned int times, timem, timeh;
+	user *head, *pp;
+	unsigned int count = 0;
+
+	pp = head = readinfo();
+	//画框
+	setfillcolor(edittextcolor);
+	solidrectangle(200, 50, winw - 200, winh - 50);
+	setfillcolor(background);
+	solidrectangle(200 + pointw, 50 + pointw, winw - 200 - pointw, winh - 50 - pointw);
+	//Game Over
+	str[0] = inittext("Game Over", 0, -150);
+	settextstyle(70, 0, "微软雅黑");
+	setbkcolor(background);
+	settextcolor(noticecolor);
+	outtextxy(str[0].x, str[0].y, str[0].tstr);
+	//显示所得分数
+	usedsize = totlesize = 0;
+	cscore = mystrcat(cscore, &usedsize, &totlesize, "分数：");
+	cscore = myintcat(cscore, &usedsize, &totlesize, score);
+	str[1] = inittext(cscore, 0, -85);
+	settextstyle(60, 0, "微软雅黑");
+	setbkcolor(background);
+	settextcolor(noticecolor);
+	outtextxy(winw / 2 - 100, str[1].y, str[1].tstr);
+	//更新最高分
+	if (islogin)
+	{
+		if (score > usr.maxscore)
+		{
+			usr.maxscore = score;
 		}
 	}
-	
-	return NULL;
+	//更新排名
+	while (pp != NULL)
+	{
+		if(islogin)
+		{	//在当前排名下的排名+1
+			if ((pp->maxscore < score) && (pp->order < usr.order))
+			{
+				pp->order += 1;
+			}
+		}
+		//计算分数大于当前玩家的人数
+		if (pp->maxscore > score)
+		{
+			count++;
+		}
+		pp = pp->next;
+	}
+	usr.order = (usr.order > (count + 1)) ? (count + 1) : usr.order;
+	usedsize = totlesize = 0;
+	cscore = mystrcat(cscore, &usedsize, &totlesize, "排名：");
+	cscore = myintcat(cscore, &usedsize, &totlesize, count + 1);
+	str[2] = inittext(cscore, 0, -30);
+	settextstyle(60, 0, "微软雅黑");
+	setbkcolor(background);
+	settextcolor(noticecolor);
+	outtextxy(winw / 2 - 100, str[2].y, str[2].tstr);
+	//时间
+	usedsize = totlesize = 0;
+	cscore = mystrcat(cscore, &usedsize, &totlesize, "用时：");
+	time /= 1000;
+	timeh = time / 60 / 60;
+	timem = time / 60 - timeh;
+	times = time % 60 - timem;
+	if (islogin)
+	{//更新当前时间
+		usr.timeh += timeh;
+		usr.timem += timem;
+		usr.times += times;
+
+		if (usr.times / 60 > 0)
+		{
+			usr.timem += usr.times / 60;
+			usr.times -= usr.times;
+		}
+		if (usr.timem / 60 > 0)
+		{
+			usr.timeh += usr.timem / 60;
+			usr.timem -= usr.timem;
+		}
+	}
+
+	if (timeh > 0)
+	{
+		cscore = myintcat(cscore, &usedsize, &totlesize, timeh);
+		cscore = mystrcat(cscore, &usedsize, &totlesize, "时");
+		cscore = myintcat(cscore, &usedsize, &totlesize, timem);
+		cscore = mystrcat(cscore, &usedsize, &totlesize, "分");
+	}
+	else
+	{
+		if (timem > 0)
+		{
+			cscore = myintcat(cscore, &usedsize, &totlesize, timem);
+			cscore = mystrcat(cscore, &usedsize, &totlesize, "分");
+		}
+	}
+	cscore = myintcat(cscore, &usedsize, &totlesize, times);
+	cscore = mystrcat(cscore, &usedsize, &totlesize, "秒");
+	str[3] = inittext(cscore, 0, 30);
+	settextstyle(60, 0, "微软雅黑");
+	setbkcolor(background);
+	settextcolor(noticecolor);
+	outtextxy(winw / 2 - 100, str[3].y, str[3].tstr);
+
+	if (islogin)
+	{
+		usr.playcount++;
+		writeinfo(head);
+	}
+	settextstyle(50, 0, "微软雅黑");
+	setbkcolor(background);
+	settextcolor(noticecolor);
+	schoise[0] = inittext("返回主菜单", 100, 130);
+	schoise[1] = inittext("重新开始", -100, 130);
+	outtextxy(schoise[0].x, schoise[0].y, schoise[0].tstr);
+	outtextxy(schoise[1].x, schoise[1].y, schoise[1].tstr);
+	if (mousehandle(schoise, 2) == 0)
+	{
+		return false;
+	}
+	return true;
+}
+
+/*
+函数功能：向文件写入用户信息
+函数参数：无
+函数返回值：无
+*/
+void writeinfo(user *head)
+{
+	FILE *fp;
+	user *pp = NULL, *pn = NULL;
+
+	fopen_s(&fp, finfo, "w");
+
+if (fp == NULL)
+	{
+		MessageBox(GetHWnd(), "未能写入用户信息文件", "错误", MB_ICONERROR);
+		exit(-1);
+	}
+	pp = head;
+	while (pp != NULL)
+	{
+		if (strcmp(pp->username, usr.username) == 0)
+		{
+			fprintf_s(fp, "%s %s %u %u %u %u %u %u\n", usr.username, usr.password, usr.playcount, usr.timeh, usr.timem, usr.times, usr.maxscore, usr.order);
+		}
+		else
+		{
+			fprintf_s(fp, "%s %s %u %u %u %u %u %u\n", pp->username, pp->password, pp->playcount, pp->timeh, pp->timem, usr.times, pp->maxscore, pp->order);
+		}
+		pp = pp->next;
+	}
+	fclose(fp);
+	pp = head;
+	while (pp != NULL)
+	{
+		pn = pp->next;
+		free(pp);
+		pp = pn;
+	}
 }
