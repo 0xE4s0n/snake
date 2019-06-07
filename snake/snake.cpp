@@ -935,7 +935,10 @@ void play(void)
 			return;
 		}
 	}
+lable_restart:
 	cleardevice();
+	settextstyle(50, 0, "微软雅黑");
+	settextcolor(menutextcolor);
 	difficult[0] = inittext("简单", 0, -winh / 2 + 145);
 	difficult[1] = inittext("一般", 0, -winh / 2 + 215);
 	difficult[2] = inittext("困难", 0, -winh / 2 + 285);
@@ -952,7 +955,7 @@ void play(void)
 	}
 	args = &ctrlflag;
 	pthread_create(&contrl_thread, NULL, contrlthread, args);
-lable_restart:
+lable_nextsection:
 	derection = 3, headto = 3;
 	playground = initplay();
 	Wall = initwall(idifficult);
@@ -1052,7 +1055,7 @@ lable_restart:
 				Sleep(1000);
 				section++;
 				speed += 5;
-				goto lable_restart;
+				goto lable_nextsection;
 			}
 			fod = drawfood(Wall, &snak);
 		}
