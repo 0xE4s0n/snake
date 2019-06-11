@@ -21,7 +21,7 @@
 #define foodcolor RGB(255, 105, 119)//食物的颜色
 #define scorecolor RGB(52, 250, 242)//游戏界面分数颜色
 #define noticecolor RGB(255, 27, 29)//关卡提示文字颜色
-#define finfo "userinfo.txt" //用户信息保存文件
+#define finfo ".userinfo.data" //用户信息保存文件
 #define pointw 15
 
 
@@ -1796,7 +1796,7 @@ bool death(unsigned int score, unsigned int time)
 			}
 		}
 		//计算分数大于等于当前玩家的人数
-		if (pp->maxscore >= score)
+		if (pp->maxscore >= score && pp->order != 99)
 		{
 			count++;
 		}
